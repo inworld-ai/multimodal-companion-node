@@ -5,7 +5,7 @@ import fs from 'fs';
 import fsPromises from 'fs/promises';
 import path from 'path';
 import { GraphBuilder, RemoteLLMChatNode } from '@inworld/runtime/graph';
-import { TEXT_CONFIG } from './constants';
+import { TEXT_CONFIG, DEFAULT_VAD_MODEL_PATH } from './constants';
 import dotenv from 'dotenv';
 import { ContentInterface } from '@inworld/runtime';
 import { VADFactory } from '@inworld/runtime/primitives/vad';
@@ -134,11 +134,11 @@ function resolveStaticFile(relativePath: string) {
 }
 
 app.get('/test-image', (req, res) => {
-  res.sendFile(resolveStaticFile('test-image-chat.html'));
+  res.sendFile(resolveStaticFile('examples/test-image-chat.html'));
 });
 
 app.get('/test-audio', (req, res) => {
-  res.sendFile(resolveStaticFile('test-audio.html'));
+  res.sendFile(resolveStaticFile('examples/test-audio.html'));
 });
 
 // Create WebSocket session endpoint (protected)
@@ -296,8 +296,9 @@ server.on('upgrade', async (request, socket, head) => {
 server.listen(PORT, async () => {
   try {
     // Initialize VAD client
+    const vadModelPath = process.env.VAD_MODEL_PATH || path.join(__dirname, DEFAULT_VAD_MODEL_PATH);
     vadClient = await VADFactory.createLocal({
-      modelPath: process.env.VAD_MODEL_PATH,
+      modelPath: vadModelPath,
     });
     console.log('VAD client initialized');
 

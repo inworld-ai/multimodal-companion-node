@@ -60,6 +60,7 @@ Thumbs.db
 # Model files (large binaries)
 *.bin
 *.model
+# Note: assets/models/silero_vad.onnx is tracked for the project to work
 
 # Audio/media files
 *.wav
