@@ -5,13 +5,12 @@ import fs from 'fs';
 import fsPromises from 'fs/promises';
 import path from 'path';
 import { GraphBuilder, RemoteLLMChatNode } from '@inworld/runtime/graph';
-import { TEXT_CONFIG } from './constants';
+import { TEXT_CONFIG, DEFAULT_VAD_MODEL_PATH } from './constants';
 import dotenv from 'dotenv';
 import { ContentInterface } from '@inworld/runtime';
 import { VADFactory } from '@inworld/runtime/primitives/vad';
 import { createServer } from 'http';
 import { WebSocketServer } from 'ws';
-import { parse } from 'url';
 import { RawData } from 'ws';
 import { MessageHandler } from './message_handler';
 import { STTGraph } from './stt_graph';
@@ -85,8 +84,8 @@ function createMessages(
 
 // WebSocket connection handler
 webSocket.on('connection', (ws, request) => {
-  const { query } = parse(request.url!, true);
-  const key = query.key?.toString();
+  const url = new URL(request.url!, `http://${request.headers.host || 'localhost'}`);
+  const key = url.searchParams.get('key');
 
   if (!key) {
     ws.close(4000, 'Session key required');
@@ -134,11 +133,11 @@ function resolveStaticFile(relativePath: string) {
 }
 
 app.get('/test-image', (req, res) => {
-  res.sendFile(resolveStaticFile('test-image-chat.html'));
+  res.sendFile(resolveStaticFile('examples/test-image-chat.html'));
 });
 
 app.get('/test-audio', (req, res) => {
-  res.sendFile(resolveStaticFile('test-audio.html'));
+  res.sendFile(resolveStaticFile('examples/test-audio.html'));
 });
 
 // Create WebSocket session endpoint (protected)
@@ -242,9 +241,9 @@ app.post('/chat', authMiddleware, upload.single('image'), async (req, res) => {
 
 // Handle WebSocket upgrade
 server.on('upgrade', async (request, socket, head) => {
-  const { pathname } = parse(request.url!);
+  const url = new URL(request.url!, `http://${request.headers.host || 'localhost'}`);
 
-  if (pathname === '/ws') {
+  if (url.pathname === '/ws') {
     // DEBUG: log every WS upgrade hit to help diagnose connectivity/auth issues
     try {
       // eslint-disable-next-line @typescript-eslint/ban-ts-comment
@@ -255,9 +254,8 @@ server.on('upgrade', async (request, socket, head) => {
     let allowed = false;
     let denyReason = '';
     try {
-      const { query } = parse(request.url!, true);
-      const key = typeof (query as any).key === 'string' ? (query as any).key : undefined;
-      const token = typeof (query as any).wsToken === 'string' ? (query as any).wsToken : undefined;
+      const key = url.searchParams.get('key') || undefined;
+      const token = url.searchParams.get('wsToken') || undefined;
       if (key && token) {
         const record = wsTokens[key];
         if (record && record.token === token && record.expiresAt >= Date.now()) {
@@ -296,8 +294,9 @@ server.on('upgrade', async (request, socket, head) => {
 server.listen(PORT, async () => {
   try {
     // Initialize VAD client
+    const vadModelPath = process.env.VAD_MODEL_PATH || path.join(__dirname, DEFAULT_VAD_MODEL_PATH);
     vadClient = await VADFactory.createLocal({
-      modelPath: process.env.VAD_MODEL_PATH,
+      modelPath: vadModelPath,
     });
     console.log('VAD client initialized');
 

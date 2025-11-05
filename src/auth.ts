@@ -1,7 +1,6 @@
 import crypto from 'crypto';
 import type { IncomingMessage } from 'http';
 import type { Request, Response, NextFunction } from 'express';
-import { parse } from 'url';
 
 // In-memory nonce store to prevent replay (simple TTL management)
 const nonceTimestamps = new Map<string, number>();
@@ -92,15 +91,19 @@ export function verifyIncomingRequest(req: IncomingMessage | Request): { ok: boo
 
   let header = headers['authorization'] as string | undefined;
   if (!header && url) {
-    const { query } = parse(url, true);
-    const qAuth = typeof (query as any).auth === 'string' ? (query as any).auth : undefined;
-    if (qAuth) {
-      // For query param, spaces are often encoded as '+' by some clients; restore and decode.
-      try {
-        header = decodeURIComponent(qAuth.replace(/\+/g, ' '));
-      } catch {
-        header = qAuth;
+    try {
+      const urlObj = new URL(url, `http://${headers['host'] || 'localhost'}`);
+      const qAuth = urlObj.searchParams.get('auth') || undefined;
+      if (qAuth) {
+        // For query param, spaces are often encoded as '+' by some clients; restore and decode.
+        try {
+          header = decodeURIComponent(qAuth.replace(/\+/g, ' '));
+        } catch {
+          header = qAuth;
+        }
       }
+    } catch {
+      // If URL parsing fails, continue without query param auth
     }
   }
 

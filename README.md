@@ -8,20 +8,22 @@ This service is a Node.js backend built on Inworld Runtime that powers:
 Unity connects via HTTP to create a session token, then upgrades to WebSocket for interactive audio/text/image exchange.
 
 ### Repository Layout (server-side)
-- `index.ts`
+- `src/index.ts`
   - Express HTTP server, WebSocket upgrade, session/token issuance, auth checks
   - Optional HTTP `/chat` endpoint (not required if using WebSocket only)
-- `message_handler.ts`
+- `src/message_handler.ts`
   - Parses client messages (TEXT, AUDIO, AUDIO_SESSION_END, IMAGE_CHAT)
   - Orchestrates STT executions and ImageChat (LLM→Chunk→TTS) streaming
-- `stt_graph.ts`
+- `src/stt_graph.ts`
   - Builds a single, long-lived STT GraphExecutor used across the process
-- `auth.ts`
+- `src/auth.ts`
   - HMAC auth verification for HTTP/WS (compatible with Unity `InworldAuth`)
-- `constants.ts`
+- `src/constants.ts`
   - Defaults for audio sample rates, VAD thresholds, text generation config
-- `test-audio.html`, `test-image-chat.html`
+- `examples/test-audio.html`, `examples/test-image-chat.html`
   - Local test pages for quick validation without Unity
+- `assets/models/silero_vad.onnx`
+  - VAD model file used for voice activity detection
 
 ### Runtime Requirements
 - Node.js 18+
@@ -60,7 +62,7 @@ Server output (expected):
 Example `.env` (you can start from `.env-sample`):
 ```bash
 INWORLD_API_KEY=xxxxxx_base64_apiKey_colon_apiSecret
-VAD_MODEL_PATH=silero_vad.onnx
+VAD_MODEL_PATH=assets/models/silero_vad.onnx
 PORT=3000
 # Enable local HTML test helper endpoint (development only)
 # ALLOW_TEST_CLIENT=true
