@@ -10,7 +10,6 @@ Unity connects via HTTP to create a session token, then upgrades to WebSocket fo
 ## Prerequisites
 
 - Node.js 18+
-- TypeScript 5+
 - An Inworld AI account and API key
 
 ## Get Started
@@ -36,9 +35,9 @@ Get your API key from the [Inworld Portal](https://platform.inworld.ai/).
 ### Step 3: Install & Run
 
 ```bash
-yarn install
-yarn build
-yarn start
+npm install
+npm run build
+npm start
 ```
 
 Server output (expected):
