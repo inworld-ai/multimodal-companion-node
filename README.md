@@ -39,9 +39,9 @@ cp .env-sample .env
 
 2) Install & Run
 ```bash
-yarn install
-yarn build
-yarn start
+npm install
+npm run build
+npm start
 ```
 
 Server output (expected):
