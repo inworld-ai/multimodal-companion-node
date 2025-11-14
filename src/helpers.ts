@@ -55,7 +55,7 @@ export const parseEnvironmentVariables = () => {
 
 export const preparePrompt = async (
   promptTemplate: string,
-  promptInput: PromptInput,
+  promptInput: PromptInput
 ) => {
   return renderJinja(promptTemplate, getPromptData(promptInput));
 };

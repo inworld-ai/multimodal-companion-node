@@ -1,8 +1,17 @@
 import { v4 } from 'uuid';
 import { RawData } from 'ws';
-import { GraphBuilder, RemoteLLMChatNode, RemoteTTSNode, TextChunkingNode, Graph } from '@inworld/runtime/graph';
+import type { VAD } from '@inworld/runtime/primitives/vad';
+import {
+  GraphBuilder,
+  RemoteLLMChatNode,
+  RemoteTTSNode,
+  TextChunkingNode,
+  Graph,
+  GraphOutputStream,
+} from '@inworld/runtime/graph';
 
 import { GraphTypes, TTSOutputStreamIterator } from '@inworld/runtime/common';
+// eslint-disable-next-line @typescript-eslint/no-require-imports
 const WavEncoder = require('wav-encoder');
 
 import {
@@ -16,9 +25,7 @@ import {
   DEFAULT_VOICE_ID,
   TTS_SAMPLE_RATE,
 } from './constants';
-import {
-  AudioInput, EVENT_TYPE, TextInput, ImageChatInput
-} from './types';
+import { AudioInput, EVENT_TYPE, TextInput, ImageChatInput } from './types';
 import { EventFactory } from './event_factory';
 import { STTGraph } from './stt_graph';
 
@@ -27,7 +34,9 @@ let STT_ACTIVE_EXECUTIONS = 0;
 let IMAGECHAT_ACTIVE_EXECUTIONS = 0;
 function logActive(tag: 'STT' | 'IMAGE', value: number, interactionId: string) {
   // Minimal, high-signal log for tracking concurrent executes
-  console.log(`[ActiveExecutions] ${tag}=${value} (interactionId=${interactionId})`);
+  console.log(
+    `[ActiveExecutions] ${tag}=${value} (interactionId=${interactionId})`
+  );
 }
 
 export class MessageHandler {
@@ -47,14 +56,25 @@ export class MessageHandler {
   private imageChatCurrentVoiceId: string | null = null;
 
   private async ensureImageChatExecutor(voiceId: string) {
-    if (this.imageChatExecutor && this.imageChatCurrentVoiceId === voiceId) return;
+    if (this.imageChatExecutor && this.imageChatCurrentVoiceId === voiceId)
+      return;
     // Rebuild when first time or voiceId changed
-    try { this.imageChatExecutor?.cleanupAllExecutions?.(); } catch {}
-    try { this.imageChatExecutor?.stopExecutor?.(); } catch {}
-    try { this.imageChatExecutor?.destroy?.(); } catch {}
+    try {
+      this.imageChatExecutor?.cleanupAllExecutions?.();
+    } catch {
+      // Ignore cleanup errors
+    }
+    try {
+      this.imageChatExecutor?.stopExecutor?.();
+    } catch {
+      // Ignore stop errors
+    }
+    try {
+      this.imageChatExecutor?.destroy?.();
+    } catch {
+      // Ignore destroy errors
+    }
     this.imageChatExecutor = null;
-
-    
 
     // Create TTS node with the target voice
     const ttsNode = new RemoteTTSNode({
@@ -80,9 +100,9 @@ export class MessageHandler {
     });
 
     // Build LLM -> TTS pipeline once
-    this.imageChatExecutor = new GraphBuilder({ 
+    this.imageChatExecutor = new GraphBuilder({
       id: `image-chat-tts`,
-      apiKey: process.env.INWORLD_API_KEY!
+      apiKey: process.env.INWORLD_API_KEY!,
     })
       .addNode(llmNode)
       .addNode(ttsNode)
@@ -98,8 +118,8 @@ export class MessageHandler {
 
   constructor(
     private graph: STTGraph,
-    private vadClient: any,
-    private send: (data: any) => void,
+    private vadClient: VAD | null,
+    private send: (data: Record<string, unknown>) => void
   ) {}
 
   async handleMessage(data: RawData, key: string) {
@@ -107,8 +127,8 @@ export class MessageHandler {
     const interactionId = v4();
 
     switch (message.type) {
-      case EVENT_TYPE.TEXT:
-        let input = {
+      case EVENT_TYPE.TEXT: {
+        const input = {
           text: message.text,
           interactionId,
           key,
@@ -120,13 +140,14 @@ export class MessageHandler {
             input,
             interactionId,
             graph: this.graph,
-          }),
+          })
         );
 
         break;
+      }
 
-      case EVENT_TYPE.IMAGE_CHAT:
-        let imageChatInput = {
+      case EVENT_TYPE.IMAGE_CHAT: {
+        const imageChatInput = {
           text: message.text,
           image: message.image,
           voiceId: message.voiceId,
@@ -139,27 +160,30 @@ export class MessageHandler {
             key,
             input: imageChatInput,
             interactionId,
-          }),
+          })
         );
 
         break;
+      }
 
-      case EVENT_TYPE.AUDIO:
-        const audioBuffer: any[] = [];
+      case EVENT_TYPE.AUDIO: {
+        const audioBuffer: number[] = [];
         for (let i = 0; i < message.audio.length; i++) {
           Object.values(message.audio[i]).forEach((value) => {
-            audioBuffer.push(value);
+            if (typeof value === 'number') {
+              audioBuffer.push(value);
+            }
           });
         }
 
-        if (audioBuffer.length >= this.FRAME_PER_BUFFER) {
+        if (audioBuffer.length >= this.FRAME_PER_BUFFER && this.vadClient) {
           const audioChunk = {
             data: audioBuffer,
             sampleRate: this.INPUT_SAMPLE_RATE,
           };
           const vadResult = await this.vadClient.detectVoiceActivity(
             audioChunk,
-            SPEECH_THRESHOLD,
+            SPEECH_THRESHOLD
           );
 
           if (this.isCapturingSpeech) {
@@ -195,6 +219,7 @@ export class MessageHandler {
           }
         }
         break;
+      }
 
       case EVENT_TYPE.AUDIO_SESSION_END:
         this.pauseDuration = 0;
@@ -229,10 +254,8 @@ export class MessageHandler {
   }
 
   private async processCapturedSpeech(key: string, interactionId: string) {
-    let input: AudioInput | null = null;
-
     try {
-      input = {
+      const input: AudioInput = {
         audio: {
           // Normalize to get consistent input regardless of how loud or quiet the user's microphone input is.
           // Avoid normalizing before VAD else quiet ambient sound can be amplified and trigger VAD.
@@ -240,7 +263,12 @@ export class MessageHandler {
           sampleRate: this.INPUT_SAMPLE_RATE,
         },
         state: {
-          agent: { id: 'demo-agent', name: 'Demo Agent', description: 'Demo STT Agent', motivation: 'Help with speech recognition' },
+          agent: {
+            id: 'demo-agent',
+            name: 'Demo Agent',
+            description: 'Demo STT Agent',
+            motivation: 'Help with speech recognition',
+          },
           userName: 'User',
           messages: [],
           imageUrl: '',
@@ -257,15 +285,17 @@ export class MessageHandler {
           input,
           interactionId,
           graph: this.graph,
-        }),
+        })
       );
     } catch (error) {
-      console.error('Error processing captured speech:', error.message);
+      const errorMessage =
+        error instanceof Error ? error.message : 'Unknown error';
+      console.error('Error processing captured speech:', errorMessage);
     }
   }
 
   private async executeImageChat({
-    key,
+    key: _key,
     input,
     interactionId,
   }: {
@@ -309,32 +339,43 @@ export class MessageHandler {
 
       IMAGECHAT_ACTIVE_EXECUTIONS++;
       logActive('IMAGE', IMAGECHAT_ACTIVE_EXECUTIONS, interactionId);
-      const executionResult = await this.imageChatExecutor!.start(graphInput, { executionId: v4() });
+      const executionResult = await this.imageChatExecutor!.start(graphInput, {
+        executionId: v4(),
+      });
 
       try {
         // Handle streaming TTS response
-        await this.handleTTSResponse(executionResult.outputStream, interactionId);
+        await this.handleTTSResponse(
+          executionResult.outputStream,
+          interactionId
+        );
       } finally {
         this.send(EventFactory.interactionEnd(interactionId));
-        try { this.imageChatExecutor!.closeExecution(executionResult.outputStream); } catch {}
+        try {
+          this.imageChatExecutor!.closeExecution(executionResult.outputStream);
+        } catch {
+          // Ignore close errors
+        }
         IMAGECHAT_ACTIVE_EXECUTIONS--;
         logActive('IMAGE', IMAGECHAT_ACTIVE_EXECUTIONS, interactionId);
       }
-      
     } catch (error) {
       console.error('Error in executeImageChat:', error);
-      const errorPacket = EventFactory.error(error, interactionId);
+      const errorPacket = EventFactory.error(
+        error instanceof Error ? error : new Error(String(error)),
+        interactionId
+      );
       this.send(errorPacket);
     }
   }
 
   private async handleTTSResponse(
-    outputStream: any,
-    interactionId: string,
+    outputStream: GraphOutputStream,
+    interactionId: string
   ) {
     try {
-      const ttsStream = (await outputStream.next())
-        .data as TTSOutputStreamIterator;
+      const result = await outputStream.next();
+      const ttsStream = result.data as TTSOutputStreamIterator;
 
       if (ttsStream?.next) {
         let chunk = await ttsStream.next();
@@ -344,7 +385,7 @@ export class MessageHandler {
           if (chunk.text) {
             const textPacket = EventFactory.text(chunk.text, interactionId, {
               isAgent: true,
-              name: 'Agent'
+              name: 'Agent',
             });
             this.send(textPacket);
           }
@@ -360,8 +401,8 @@ export class MessageHandler {
               EventFactory.audio(
                 Buffer.from(audioBuffer).toString('base64'),
                 interactionId,
-                v4(), // utteranceId
-              ),
+                v4() // utteranceId
+              )
             );
           }
 
@@ -370,13 +411,16 @@ export class MessageHandler {
       }
     } catch (error) {
       console.error('Error in handleTTSResponse:', error);
-      const errorPacket = EventFactory.error(error, interactionId);
+      const errorPacket = EventFactory.error(
+        error instanceof Error ? error : new Error(String(error)),
+        interactionId
+      );
       this.send(errorPacket);
     }
   }
 
   private async executeGraph({
-    key,
+    key: _key,
     input,
     interactionId,
     graph,
@@ -392,36 +436,40 @@ export class MessageHandler {
     const executionResult = await executor.start(input, { executionId: v4() });
 
     try {
-      await this.handleResponse(
-        executionResult.outputStream,
-        interactionId,
-      );
+      await this.handleResponse(executionResult.outputStream, interactionId);
     } finally {
       this.send(EventFactory.interactionEnd(interactionId));
-      try { executor.closeExecution(executionResult.outputStream); } catch {}
+      try {
+        executor.closeExecution(executionResult.outputStream);
+      } catch {
+        // Ignore close errors
+      }
       STT_ACTIVE_EXECUTIONS--;
       logActive('STT', STT_ACTIVE_EXECUTIONS, interactionId);
     }
   }
 
   private async handleResponse(
-    outputStream: any,
-    interactionId: string,
+    outputStream: GraphOutputStream,
+    interactionId: string
   ) {
     try {
-      const sttOutput = (await outputStream.next())
-        .data;
+      const result = await outputStream.next();
+      const sttOutput = result.data as string;
 
-      console.log("TTS Stream:", sttOutput);
+      console.log('TTS Stream:', sttOutput);
       const textPacket = EventFactory.text(sttOutput, interactionId, {
         isAgent: true,
-        name: 'User'
-      }); 
+        name: 'User',
+      });
 
       this.send(textPacket);
     } catch (error) {
       console.error(error);
-      const errorPacket = EventFactory.error(error, interactionId);
+      const errorPacket = EventFactory.error(
+        error instanceof Error ? error : new Error(String(error)),
+        interactionId
+      );
       // Ignore errors caused by empty speech.
       if (!errorPacket.error.includes('recognition produced no text')) {
         this.send(errorPacket);

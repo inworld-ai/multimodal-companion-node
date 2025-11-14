@@ -4,7 +4,7 @@ export class EventFactory {
   static text(
     text: string,
     interactionId: string,
-    source: { isAgent?: boolean; isUser?: boolean; name?: string },
+    source: { isAgent?: boolean; isUser?: boolean; name?: string }
   ) {
     const date = new Date();
 

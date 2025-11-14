@@ -10,7 +10,7 @@ import dotenv from 'dotenv';
 import { ContentInterface } from '@inworld/runtime';
 import { VADFactory } from '@inworld/runtime/primitives/vad';
 import { createServer } from 'http';
-import { WebSocketServer } from 'ws';
+import { WebSocketServer, WebSocket } from 'ws';
 import { RawData } from 'ws';
 import { MessageHandler } from './message_handler';
 import { STTGraph } from './stt_graph';
@@ -27,7 +27,10 @@ const PORT = process.env.PORT || 3000;
 app.use((req, res, next) => {
   res.header('Access-Control-Allow-Origin', '*');
   res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-  res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
+  res.header(
+    'Access-Control-Allow-Headers',
+    'Origin, X-Requested-With, Content-Type, Accept, Authorization'
+  );
   if (req.method === 'OPTIONS') {
     res.sendStatus(200);
   } else {
@@ -35,21 +38,18 @@ app.use((req, res, next) => {
   }
 });
 
-let vadClient: any;
+let vadClient: Awaited<ReturnType<typeof VADFactory.createLocal>>;
 let sttGraph: STTGraph;
-const connections: { [key: string]: { ws?: any } } = {};
+const connections: { [key: string]: { ws?: WebSocket } } = {};
 // Short-lived WS tokens issued after HTTP auth; validated during WS upgrade
-const wsTokens: { [sessionKey: string]: { token: string; expiresAt: number } } = {};
+const wsTokens: { [sessionKey: string]: { token: string; expiresAt: number } } =
+  {};
 const WS_TOKEN_TTL_MS = 5 * 60 * 1000; // 5 minutes
 
-function createMessages(
-  prompt: string,
-  imageUrl?: string,
-) {
+function createMessages(prompt: string, imageUrl?: string) {
   const systemMessage = {
     role: 'system',
-    content:
-      'You are a helpful assistant.',
+    content: 'You are a helpful assistant.',
   };
 
   let userMessage;
@@ -84,7 +84,10 @@ function createMessages(
 
 // WebSocket connection handler
 webSocket.on('connection', (ws, request) => {
-  const url = new URL(request.url!, `http://${request.headers.host || 'localhost'}`);
+  const url = new URL(
+    request.url!,
+    `http://${request.headers.host || 'localhost'}`
+  );
   const key = url.searchParams.get('key');
 
   if (!key) {
@@ -104,7 +107,7 @@ webSocket.on('connection', (ws, request) => {
   const messageHandler = new MessageHandler(
     sttGraph,
     vadClient,
-    (data: any) => ws.send(JSON.stringify(data))
+    (data: Record<string, unknown>) => ws.send(JSON.stringify(data))
   );
 
   ws.on('message', (data: RawData) => {
@@ -132,41 +135,50 @@ function resolveStaticFile(relativePath: string) {
   return inCwd;
 }
 
-app.get('/test-image', (req, res) => {
+app.get('/test-image', (_req, res) => {
   res.sendFile(resolveStaticFile('examples/test-image-chat.html'));
 });
 
-app.get('/test-audio', (req, res) => {
+app.get('/test-audio', (_req, res) => {
   res.sendFile(resolveStaticFile('examples/test-audio.html'));
 });
 
 // Create WebSocket session endpoint (protected)
-app.post('/create-session', authMiddleware, (req, res) => {
+app.post('/create-session', authMiddleware, (_req, res) => {
   const sessionKey = uuidv4();
   connections[sessionKey] = {};
   const wsToken = uuidv4();
-  wsTokens[sessionKey] = { token: wsToken, expiresAt: Date.now() + WS_TOKEN_TTL_MS };
+  wsTokens[sessionKey] = {
+    token: wsToken,
+    expiresAt: Date.now() + WS_TOKEN_TTL_MS,
+  };
   res.json({ sessionKey, wsToken });
 });
 
 // Development helper: issue short-lived access tokens for test pages without exposing auth in browser
 // Enable via ALLOW_TEST_CLIENT=true. DO NOT enable in production.
-app.get('/get_access_token', (req, res) => {
+app.get('/get_access_token', (_req, res) => {
   if (process.env.ALLOW_TEST_CLIENT !== 'true') {
-    return res.status(403).json({ error: 'Disabled. Set ALLOW_TEST_CLIENT=true for local testing.' });
+    res.status(403).json({
+      error: 'Disabled. Set ALLOW_TEST_CLIENT=true for local testing.',
+    });
+    return;
   }
   const sessionKey = uuidv4();
   connections[sessionKey] = {};
   const wsToken = uuidv4();
-  wsTokens[sessionKey] = { token: wsToken, expiresAt: Date.now() + WS_TOKEN_TTL_MS };
+  wsTokens[sessionKey] = {
+    token: wsToken,
+    expiresAt: Date.now() + WS_TOKEN_TTL_MS,
+  };
   res.json({ sessionKey, wsToken });
 });
 
 // Protect chat endpoint as well
 app.post('/chat', authMiddleware, upload.single('image'), async (req, res) => {
-  let imageFile = req.file;
+  const imageFile = req.file;
   try {
-    console.log("Received request:", req.body);
+    console.log('Received request:', req.body);
     const prompt = req.body.prompt;
 
     if (!prompt) {
@@ -182,16 +194,16 @@ app.post('/chat', authMiddleware, upload.single('image'), async (req, res) => {
     }
 
     const llmNode = new RemoteLLMChatNode({
-      id: uuidv4() + '_llm_node',      
-        provider: 'google', // 'openai'
-        modelName: 'gemini-2.5-flash-lite', // 'gpt-4o-mini'
-        stream: false,
-        textGenerationConfig: TEXT_CONFIG,      
+      id: uuidv4() + '_llm_node',
+      provider: 'google', // 'openai'
+      modelName: 'gemini-2.5-flash-lite', // 'gpt-4o-mini'
+      stream: false,
+      textGenerationConfig: TEXT_CONFIG,
     });
 
-    const executor = new GraphBuilder({ 
+    const executor = new GraphBuilder({
       id: 'http_llm_chat_graph',
-      apiKey: process.env.INWORLD_API_KEY!
+      apiKey: process.env.INWORLD_API_KEY!,
     })
       .addNode(llmNode)
       .setStartNode(llmNode)
@@ -202,17 +214,19 @@ app.post('/chat', authMiddleware, upload.single('image'), async (req, res) => {
       ...createMessages(prompt, imageUrl),
     };
 
-    console.log("Executing graph with input:", input);
-    const executionResult = await executor.start(input, { executionId: uuidv4() });
+    console.log('Executing graph with input:', input);
+    const executionResult = await executor.start(input, {
+      executionId: uuidv4(),
+    });
 
     let output = '';
-    console.log("Processing output stream...");
+    console.log('Processing output stream...');
     try {
       for await (const result of executionResult.outputStream) {
         if (result.data && (result.data as ContentInterface).content) {
           output = (result.data as ContentInterface).content;
         }
-        console.log("Received result:", result);
+        console.log('Received result:', result);
       }
     } finally {
       try {
@@ -222,10 +236,12 @@ app.post('/chat', authMiddleware, upload.single('image'), async (req, res) => {
       }
     }
 
-    res.json({ response: output });
-  } catch (err: any) {
+    return res.json({ response: output });
+  } catch (err: unknown) {
     console.error(err);
-    res.status(500).json({ error: err?.message || 'Internal server error' });
+    const errorMessage =
+      err instanceof Error ? err.message : 'Internal server error';
+    return res.status(500).json({ error: errorMessage });
   } finally {
     // Clean up uploaded file asynchronously
     if (imageFile?.path) {
@@ -241,7 +257,10 @@ app.post('/chat', authMiddleware, upload.single('image'), async (req, res) => {
 
 // Handle WebSocket upgrade
 server.on('upgrade', async (request, socket, head) => {
-  const url = new URL(request.url!, `http://${request.headers.host || 'localhost'}`);
+  const url = new URL(
+    request.url!,
+    `http://${request.headers.host || 'localhost'}`
+  );
 
   if (url.pathname === '/ws') {
     // DEBUG: log every WS upgrade hit to help diagnose connectivity/auth issues
@@ -249,7 +268,9 @@ server.on('upgrade', async (request, socket, head) => {
       // eslint-disable-next-line @typescript-eslint/ban-ts-comment
       // @ts-ignore
       console.log('WS upgrade hit:', request.url, request.headers?.host);
-    } catch {}
+    } catch {
+      // Ignore errors in debug logging
+    }
     // Prefer short-lived wsToken issued by /create-session; fallback to full Authorization if missing
     let allowed = false;
     let denyReason = '';
@@ -258,7 +279,11 @@ server.on('upgrade', async (request, socket, head) => {
       const token = url.searchParams.get('wsToken') || undefined;
       if (key && token) {
         const record = wsTokens[key];
-        if (record && record.token === token && record.expiresAt >= Date.now()) {
+        if (
+          record &&
+          record.token === token &&
+          record.expiresAt >= Date.now()
+        ) {
           allowed = true;
           // one-time use
           delete wsTokens[key];
@@ -267,7 +292,7 @@ server.on('upgrade', async (request, socket, head) => {
           denyReason = 'Invalid or expired wsToken';
         }
       }
-    } catch (e) {
+    } catch {
       denyReason = 'wsToken parse error';
     }
 
@@ -276,12 +301,18 @@ server.on('upgrade', async (request, socket, head) => {
       if (!v.ok) {
         try {
           console.warn('WS auth failed:', denyReason || v.error, request.url);
-        } catch {}
+        } catch {
+          // Ignore logging errors
+        }
         socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n');
         socket.destroy();
         return;
       }
-      try { console.log('WS Authorization auth success for:', request.url); } catch {}
+      try {
+        console.log('WS Authorization auth success for:', request.url);
+      } catch {
+        // Ignore logging errors
+      }
     }
     webSocket.handleUpgrade(request, socket, head, (ws) => {
       webSocket.emit('connection', ws, request);
@@ -294,7 +325,9 @@ server.on('upgrade', async (request, socket, head) => {
 server.listen(PORT, async () => {
   try {
     // Initialize VAD client
-    const vadModelPath = process.env.VAD_MODEL_PATH || path.join(__dirname, DEFAULT_VAD_MODEL_PATH);
+    const vadModelPath =
+      process.env.VAD_MODEL_PATH ||
+      path.join(__dirname, DEFAULT_VAD_MODEL_PATH);
     vadClient = await VADFactory.createLocal({
       modelPath: vadModelPath,
     });
@@ -308,9 +341,11 @@ server.listen(PORT, async () => {
       connections: {},
     });
     console.log('STT Graph initialized');
-    
+
     console.log(`Server running on http://localhost:${PORT}`);
-    console.log(`WebSocket available at ws://localhost:${PORT}/ws?key=<session_key>`);
+    console.log(
+      `WebSocket available at ws://localhost:${PORT}/ws?key=<session_key>`
+    );
   } catch (error) {
     console.error('Failed to initialize server:', error);
     process.exit(1);
@@ -339,4 +374,3 @@ process.on('SIGTERM', () => {
     process.exit(0);
   });
 });
-
