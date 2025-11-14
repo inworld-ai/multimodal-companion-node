@@ -55,9 +55,11 @@ export interface State {
   imageUrl: string;
 }
 
+import type { WebSocket } from 'ws';
+
 export interface Connection {
   state: State;
-  ws: any;
+  ws: WebSocket;
 }
 
 export interface PromptInput {

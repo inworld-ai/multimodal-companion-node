@@ -4,25 +4,18 @@ import {
   RemoteSTTNode,
   ProxyNode,
   GraphBuilder,
-  Graph
+  Graph,
 } from '@inworld/runtime/graph';
 import { GraphTypes } from '@inworld/runtime/common';
 import * as os from 'os';
 import * as path from 'path';
 
-import {
-  AudioInput,
-  CreateGraphPropsInterface
-} from './types';
+import { AudioInput, CreateGraphPropsInterface } from './types';
 
 export class STTGraph {
   executor: InstanceType<typeof Graph>;
 
-  private constructor({
-    executor,
-  }: {
-    executor: InstanceType<typeof Graph>;
-  }) {
+  private constructor({ executor }: { executor: InstanceType<typeof Graph> }) {
     this.executor = executor;
   }
 
@@ -33,9 +26,7 @@ export class STTGraph {
   }
 
   static async create(props: CreateGraphPropsInterface) {
-    const {
-      apiKey,
-    } = props;
+    const { apiKey: _apiKey } = props;
 
     const postfix = '-with-audio-input';
 
@@ -53,27 +44,25 @@ export class STTGraph {
 
     // start node to pass the audio input to the audio filter node
     const audioInputNode = new ProxyNode();
-    
+
     const audioFilterNode = new AudioFilterNode();
     const sttNode = new RemoteSTTNode();
 
-
-
     // Wish app would actually report an error when a node is missing at graph compilation stage, not execution
     graph
-    .addNode(audioInputNode)
-    .addNode(audioFilterNode)
-    .addNode(sttNode)
-    .addEdge(audioInputNode, audioFilterNode)
-    .addEdge(audioFilterNode, sttNode)
-    .setStartNode(audioInputNode);
+      .addNode(audioInputNode)
+      .addNode(audioFilterNode)
+      .addNode(sttNode)
+      .addEdge(audioInputNode, audioFilterNode)
+      .addEdge(audioFilterNode, sttNode)
+      .setStartNode(audioInputNode);
 
     graph.setEndNode(sttNode);
 
     const executor = graph.build();
     if (props.graphVisualizationEnabled) {
       console.log(
-        'The Graph visualization has started..If you see any fatal error after this message, pls disable graph visualization.',
+        'The Graph visualization has started..If you see any fatal error after this message, pls disable graph visualization.'
       );
       const graphPath = path.join(os.tmpdir(), `${graphName}.png`);
 

@@ -1,6 +1,7 @@
 # Multimodal Companion
 
 This service is a Node.js backend built on Inworld Runtime that powers:
+
 - Real‑time Speech‑to‑Text (STT) over WebSocket
 - Image+Text → LLM → TTS streaming ("ImageChat") over WebSocket
 - Optional HTTP test endpoints for quick local validation
@@ -46,7 +47,7 @@ Server output (expected):
 - "Server running on http://localhost:<PORT>"
 - "WebSocket available at ws://localhost:<PORT>/ws?key=<session_key>"
 
-## Repo Structure
+## Repository Layout (server-side)
 
 - `src/index.ts`
   - Express HTTP server, WebSocket upgrade, session/token issuance, auth checks
@@ -87,15 +88,17 @@ PORT=3000
 # ALLOW_TEST_CLIENT=true
 ```
 
-### ALLOW_TEST_CLIENT
+### Local HTML Testing
 
-- What it is: a development-only feature flag. When set to `true`, the server exposes `GET /get_access_token` that returns short‑lived, single‑use `{ sessionKey, wsToken }` for the HTML test pages. This avoids putting auth/signing code or secrets in the browser.
-- How to enable:
-  - Via `.env`: add `ALLOW_TEST_CLIENT=true` and restart the server.
-  - Via Windows PowerShell (current session): `$env:ALLOW_TEST_CLIENT = "true"`
-  - Persistently (PowerShell): `setx ALLOW_TEST_CLIENT "true"` then open a new terminal.
-- Verify: open `http://localhost:<PORT>/get_access_token`. You should get `{ sessionKey, wsToken }`.
-- Security: do NOT enable in production. Tokens are short‑lived (5 minutes) and single‑use, but the endpoint is intended only for local development.
+For local development and testing without Unity, you can use the HTML test pages:
+
+1. **Enable the test client endpoint**: Set `ALLOW_TEST_CLIENT=true` in your `.env` file and restart the server.
+2. **Access test pages**:
+   - `http://localhost:<PORT>/test-audio` - Stream microphone audio
+   - `http://localhost:<PORT>/test-image` - Submit prompts with images
+3. **How it works**: The pages call `GET /get_access_token` to obtain `{ sessionKey, wsToken }`, then connect to `ws://host/ws?key=...&wsToken=...`.
+
+**Security note**: `ALLOW_TEST_CLIENT` is for local development only. Do NOT enable in production. Tokens are short‑lived (5 minutes) and single‑use.
 
 ## API Reference
 
@@ -117,17 +120,19 @@ PORT=3000
 
 ### WebSocket Flow
 
-1) Client calls `POST /create-session` (with HMAC auth) → `{ sessionKey, wsToken }`
-2) Client connects: `ws://host/ws?key=<sessionKey>&wsToken=<token>`
-3) Client sends messages; server returns text/audio and `INTERACTION_END` packets
+1. Client calls `POST /create-session` (with HMAC auth) → `{ sessionKey, wsToken }`
+2. Client connects: `ws://host/ws?key=<sessionKey>&wsToken=<token>`
+3. Client sends messages; server returns text/audio and `INTERACTION_END` packets
 
 Client → Server messages:
+
 - `{ type: "text", text: string }`
-- `{ type: "audio", audio: number[][] }`  // streamed float32 chunks
-- `{ type: "audioSessionEnd" }`            // finalize the STT turn
+- `{ type: "audio", audio: number[][] }` // streamed float32 chunks
+- `{ type: "audioSessionEnd" }` // finalize the STT turn
 - `{ type: "imageChat", text: string, image: string, voiceId?: string }` // image is data URL (base64)
 
 Server → Client messages:
+
 - `TEXT`: `{ text: { text, final }, routing: { source: { isAgent|isUser, name } } }`
 - `AUDIO`: `{ audio: { chunk: base64_wav } }` (streamed for TTS)
 - `INTERACTION_END`: marks end of one turn / execution
@@ -173,28 +178,15 @@ Server → Client messages:
 - Prefer long-lived shared executors with per‑turn `start(...)`/`closeExecution(...)`
 - Expect GOAWAY after long idle periods; allow light retry or lazy re‑init on next turn
 
-## Local Testing
-
-### Local HTML Testing (no auth code in browser)
-
-- Enable local helper endpoint (optional, for development): set `ALLOW_TEST_CLIENT=true` in `.env`.
-- Start the server and open the test pages:
-  - `http://localhost:<PORT>/test-audio`
-  - `http://localhost:<PORT>/test-image`
-- The pages will call `GET /get_access_token` to obtain `{ sessionKey, wsToken }`, then connect to `ws://host/ws?key=...&wsToken=...`.
-- Verify helper endpoint works: open `http://localhost:<PORT>/get_access_token` and expect `{ sessionKey, wsToken }`.
-
-Security note: `ALLOW_TEST_CLIENT` is for local/dev only. Keep it disabled in production.
-
 ## Troubleshooting
 
-- No image update: confirm Unity captures a fresh image before each `imageChat` send
-- Long STT delay: verify VAD thresholds and that `audioSessionEnd` is sent after speech
-- Frequent GOAWAY on idle: acceptable; ensure executions are closed and executors are reused
-- gRPC `Deadline Exceeded`: single execution timed out; treat as recoverable (retry once)
-- HTTP/2 `GOAWAY ENHANCE_YOUR_CALM` (`too_many_pings`): server throttling of idle keepalives; treat as recoverable, rebuild channel/executor on next use
-- WebSocket "closed without close handshake": usually process restart/crash or proxy idle-kill; implement client auto‑reconnect (backoff)
-- "Your graph is not registered": informational warning about remote variants; safe to ignore unless you explicitly use registry-managed graphs
+- **No image update**: Confirm Unity captures a fresh image before each `imageChat` send
+- **Long STT delay**: Verify VAD thresholds and that `audioSessionEnd` is sent after speech
+- **Frequent GOAWAY on idle**: Acceptable; ensure executions are closed and executors are reused
+- **gRPC `Deadline Exceeded`**: Single execution timed out; treat as recoverable (retry once)
+- **HTTP/2 `GOAWAY ENHANCE_YOUR_CALM` (`too_many_pings`)**: Server throttling of idle keepalives; treat as recoverable, rebuild channel/executor on next use
+- **WebSocket "closed without close handshake"**: Usually process restart/crash or proxy idle-kill; implement client auto‑reconnect (backoff)
+- **"Your graph is not registered"**: Informational warning about remote variants; safe to ignore unless you explicitly use registry-managed graphs
 
 **Bug Reports**: [GitHub Issues](https://github.com/inworld-ai/multimodal-companion-node/issues)
 
@@ -202,11 +194,7 @@ Security note: `ALLOW_TEST_CLIENT` is for local/dev only. Keep it disabled in pr
 
 ## Contributing
 
-1. Fork the repository
-2. Create a feature branch: `git checkout -b feature/amazing-feature`
-3. Commit changes: `git commit -m 'Add amazing feature'`
-4. Push to branch: `git push origin feature/amazing-feature`
-5. Open a Pull Request
+We welcome contributions! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines on how to contribute to this project.
 
 ## License
 
