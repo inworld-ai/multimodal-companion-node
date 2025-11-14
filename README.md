@@ -48,24 +48,29 @@ Server output (expected):
 - "Server running on http://localhost:<PORT>"
 - "WebSocket available at ws://localhost:<PORT>/ws?key=<session_key>"
 
-## Repository Layout (server-side)
+## Repository Layout
 
-- `src/index.ts`
-  - Express HTTP server, WebSocket upgrade, session/token issuance, auth checks
-  - Optional HTTP `/chat` endpoint (not required if using WebSocket only)
-- `src/message_handler.ts`
-  - Parses client messages (TEXT, AUDIO, AUDIO_SESSION_END, IMAGE_CHAT)
-  - Orchestrates STT executions and ImageChat (LLM→Chunk→TTS) streaming
-- `src/stt_graph.ts`
-  - Builds a single, long-lived STT GraphExecutor used across the process
-- `src/auth.ts`
-  - HMAC auth verification for HTTP/WS (compatible with Unity `InworldAuth`)
-- `src/constants.ts`
-  - Defaults for audio sample rates, VAD thresholds, text generation config
-- `examples/test-audio.html`, `examples/test-image-chat.html`
-  - Local test pages for quick validation without Unity
-- `assets/models/silero_vad.onnx`
-  - VAD model file used for voice activity detection
+```
+multimodal-companion-node/
+├── src/
+│   ├── index.ts              # Express HTTP server, WebSocket upgrade, session/token issuance, auth checks
+│   ├── message_handler.ts    # Parses client messages (TEXT, AUDIO, AUDIO_SESSION_END, IMAGE_CHAT)
+│   ├── stt_graph.ts          # Builds a single, long-lived STT GraphExecutor used across the process
+│   ├── auth.ts               # HMAC auth verification for HTTP/WS (compatible with Unity InworldAuth)
+│   ├── constants.ts          # Defaults for audio sample rates, VAD thresholds, text generation config
+│   ├── event_factory.ts
+│   ├── helpers.ts
+│   └── types.ts
+├── examples/
+│   ├── test-audio.html       # Local test page for audio streaming
+│   └── test-image-chat.html  # Local test page for image chat
+├── assets/
+│   └── models/
+│       └── silero_vad.onnx   # VAD model file used for voice activity detection
+├── package.json
+├── tsconfig.json
+└── LICENSE
+```
 
 ## Configuration
 
