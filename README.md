@@ -42,6 +42,7 @@ npm start
 ```
 
 Server output (expected):
+
 - "VAD client initialized"
 - "STT Graph initialized"
 - "Server running on http://localhost:<PORT>"
