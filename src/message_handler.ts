@@ -59,20 +59,12 @@ export class MessageHandler {
     if (this.imageChatExecutor && this.imageChatCurrentVoiceId === voiceId)
       return;
     // Rebuild when first time or voiceId changed
-    try {
-      this.imageChatExecutor?.cleanupAllExecutions?.();
-    } catch {
-      // Ignore cleanup errors
-    }
-    try {
-      this.imageChatExecutor?.stopExecutor?.();
-    } catch {
-      // Ignore stop errors
-    }
-    try {
-      this.imageChatExecutor?.destroy?.();
-    } catch {
-      // Ignore destroy errors
+    if (this.imageChatExecutor) {
+      try {
+        await this.imageChatExecutor.stop();
+      } catch {
+        // Ignore stop errors
+      }
     }
     this.imageChatExecutor = null;
 
@@ -351,11 +343,6 @@ export class MessageHandler {
         );
       } finally {
         this.send(EventFactory.interactionEnd(interactionId));
-        try {
-          this.imageChatExecutor!.closeExecution(executionResult.outputStream);
-        } catch {
-          // Ignore close errors
-        }
         IMAGECHAT_ACTIVE_EXECUTIONS--;
         logActive('IMAGE', IMAGECHAT_ACTIVE_EXECUTIONS, interactionId);
       }
@@ -392,9 +379,25 @@ export class MessageHandler {
 
           // Send audio chunk
           if (chunk.audio && chunk.audio.data) {
+            // Decode base64 and create Float32Array
+            let float32Array: Float32Array;
+            if (typeof chunk.audio.data === 'string') {
+              // Data is base64 string - decode it
+              const decodedData = Buffer.from(chunk.audio.data, 'base64');
+              float32Array = new Float32Array(decodedData.buffer);
+            } else {
+              // Data is already a number array (bytes) - convert to Float32Array
+              const byteArray = new Uint8Array(chunk.audio.data);
+              float32Array = new Float32Array(
+                byteArray.buffer,
+                byteArray.byteOffset,
+                byteArray.byteLength / 4
+              );
+            }
+
             const audioBuffer = await WavEncoder.encode({
               sampleRate: chunk.audio.sampleRate,
-              channelData: [new Float32Array(chunk.audio.data)],
+              channelData: [float32Array],
             });
 
             this.send(
@@ -439,11 +442,6 @@ export class MessageHandler {
       await this.handleResponse(executionResult.outputStream, interactionId);
     } finally {
       this.send(EventFactory.interactionEnd(interactionId));
-      try {
-        executor.closeExecution(executionResult.outputStream);
-      } catch {
-        // Ignore close errors
-      }
       STT_ACTIVE_EXECUTIONS--;
       logActive('STT', STT_ACTIVE_EXECUTIONS, interactionId);
     }

@@ -7,7 +7,7 @@ import path from 'path';
 import { GraphBuilder, RemoteLLMChatNode } from '@inworld/runtime/graph';
 import { TEXT_CONFIG, DEFAULT_VAD_MODEL_PATH } from './constants';
 import dotenv from 'dotenv';
-import { ContentInterface } from '@inworld/runtime';
+import { ContentInterface, stopInworldRuntime } from '@inworld/runtime';
 import { VADFactory } from '@inworld/runtime/primitives/vad';
 import { createServer } from 'http';
 import { WebSocketServer, WebSocket } from 'ws';
@@ -221,19 +221,11 @@ app.post('/chat', authMiddleware, upload.single('image'), async (req, res) => {
 
     let output = '';
     console.log('Processing output stream...');
-    try {
-      for await (const result of executionResult.outputStream) {
-        if (result.data && (result.data as ContentInterface).content) {
-          output = (result.data as ContentInterface).content;
-        }
-        console.log('Received result:', result);
+    for await (const result of executionResult.outputStream) {
+      if (result.data && (result.data as ContentInterface).content) {
+        output = (result.data as ContentInterface).content;
       }
-    } finally {
-      try {
-        executor.closeExecution(executionResult.outputStream);
-      } catch (e) {
-        console.error('Error closing execution:', e);
-      }
+      console.log('Received result:', result);
     }
 
     return res.json({ response: output });
@@ -352,25 +344,96 @@ server.listen(PORT, async () => {
   }
 });
 
-// Graceful shutdown
-process.on('SIGINT', () => {
-  console.log('Shutting down server...');
-  if (sttGraph) {
-    sttGraph.destroy();
-  }
-  server.close(() => {
-    console.log('Server closed');
-    process.exit(0);
-  });
-});
+// Graceful shutdown - prevent multiple calls
+let isShuttingDown = false;
 
-process.on('SIGTERM', () => {
-  console.log('Shutting down server...');
-  if (sttGraph) {
-    sttGraph.destroy();
+async function gracefulShutdown() {
+  if (isShuttingDown) {
+    return;
   }
-  server.close(() => {
-    console.log('Server closed');
+  isShuttingDown = true;
+
+  console.log('Shutting down gracefully...');
+
+  try {
+    // First, close all individual WebSocket connections
+    console.log(`Closing ${webSocket.clients.size} WebSocket connections...`);
+    webSocket.clients.forEach((ws) => {
+      if (ws.readyState === ws.OPEN || ws.readyState === ws.CONNECTING) {
+        ws.close();
+      }
+    });
+
+    // Close WebSocket server to stop accepting new connections
+    await new Promise<void>((resolve) => {
+      webSocket.close(() => {
+        console.log('WebSocket server closed');
+        resolve();
+      });
+      // Timeout after 2 seconds
+      setTimeout(() => {
+        console.log('WebSocket server close timeout');
+        resolve();
+      }, 2000);
+    });
+
+    // Stop VAD client if it has a destroy method
+    if (
+      vadClient &&
+      typeof (vadClient as { destroy?: () => void }).destroy === 'function'
+    ) {
+      try {
+        (vadClient as { destroy: () => void }).destroy();
+        console.log('VAD client stopped');
+      } catch (error) {
+        console.error('Error stopping VAD client (non-fatal):', error);
+      }
+    }
+
+    // Give a small delay for any pending operations to complete
+    await new Promise((resolve) => setTimeout(resolve, 100));
+
+    // Close the HTTP server with timeout
+    await Promise.race([
+      new Promise<void>((resolve) => {
+        server.close(() => {
+          console.log('HTTP server closed');
+          resolve();
+        });
+      }),
+      new Promise<void>((resolve) => {
+        setTimeout(() => {
+          console.log('HTTP server close timeout');
+          resolve();
+        }, 2000);
+      }),
+    ]);
+
+    // Stop Inworld Runtime with error handling and timeout
+    try {
+      await Promise.race([
+        stopInworldRuntime(),
+        new Promise((resolve) => {
+          setTimeout(() => {
+            console.log('stopInworldRuntime timeout');
+            resolve(undefined);
+          }, 5000);
+        }),
+      ]);
+      console.log('Inworld Runtime stopped');
+    } catch (error) {
+      console.error('Error stopping Inworld Runtime (non-fatal):', error);
+    }
+
+    // Exit immediately after cleanup
+    console.log('Shutdown complete');
     process.exit(0);
-  });
-});
+  } catch (error) {
+    // Final catch-all - log and exit gracefully
+    console.error('Unexpected error during shutdown:', error);
+    process.exit(0);
+  }
+}
+
+process.on('SIGTERM', gracefulShutdown);
+process.on('SIGINT', gracefulShutdown);

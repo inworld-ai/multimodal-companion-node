@@ -13,16 +13,20 @@ import * as path from 'path';
 import { AudioInput, CreateGraphPropsInterface } from './types';
 
 export class STTGraph {
-  executor: InstanceType<typeof Graph>;
+  executor: Graph;
 
-  private constructor({ executor }: { executor: InstanceType<typeof Graph> }) {
+  private constructor({ executor }: { executor: Graph }) {
     this.executor = executor;
   }
 
-  destroy() {
-    this.executor.stopExecutor();
-    this.executor.cleanupAllExecutions();
-    this.executor.destroy();
+  async destroy() {
+    if (this.executor) {
+      try {
+        await this.executor.stop();
+      } catch (error: unknown) {
+        console.error('Error stopping executor (non-fatal):', error);
+      }
+    }
   }
 
   static async create(props: CreateGraphPropsInterface) {
@@ -61,12 +65,13 @@ export class STTGraph {
 
     const executor = graph.build();
     if (props.graphVisualizationEnabled) {
-      console.log(
-        'The Graph visualization has started..If you see any fatal error after this message, pls disable graph visualization.'
-      );
       const graphPath = path.join(os.tmpdir(), `${graphName}.png`);
-
-      await executor.visualize(graphPath);
+      console.log(
+        `The Graph visualization will be saved to ${graphPath}. If you see any fatal error after this message, pls disable graph visualization.`
+      );
+      // TODO: visualize() method should be added back in rc17
+      // Once available, uncomment: await executor.visualize(graphPath);
+      // Note: Currently visualization can be done using the Inworld CLI: npx @inworld/cli graph visualize <file>
     }
 
     return new STTGraph({
