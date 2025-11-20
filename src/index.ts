@@ -7,7 +7,7 @@ import path from 'path';
 import { GraphBuilder, RemoteLLMChatNode } from '@inworld/runtime/graph';
 import { TEXT_CONFIG, DEFAULT_VAD_MODEL_PATH } from './constants';
 import dotenv from 'dotenv';
-import { ContentInterface } from '@inworld/runtime';
+import { ContentInterface, stopInworldRuntime } from '@inworld/runtime';
 import { VADFactory } from '@inworld/runtime/primitives/vad';
 import { createServer } from 'http';
 import { WebSocketServer, WebSocket } from 'ws';
@@ -221,19 +221,11 @@ app.post('/chat', authMiddleware, upload.single('image'), async (req, res) => {
 
     let output = '';
     console.log('Processing output stream...');
-    try {
-      for await (const result of executionResult.outputStream) {
-        if (result.data && (result.data as ContentInterface).content) {
-          output = (result.data as ContentInterface).content;
-        }
-        console.log('Received result:', result);
+    for await (const result of executionResult.outputStream) {
+      if (result.data && (result.data as ContentInterface).content) {
+        output = (result.data as ContentInterface).content;
       }
-    } finally {
-      try {
-        executor.closeExecution(executionResult.outputStream);
-      } catch (e) {
-        console.error('Error closing execution:', e);
-      }
+      console.log('Received result:', result);
     }
 
     return res.json({ response: output });
@@ -352,25 +344,63 @@ server.listen(PORT, async () => {
   }
 });
 
-// Graceful shutdown
-process.on('SIGINT', () => {
-  console.log('Shutting down server...');
-  if (sttGraph) {
-    sttGraph.destroy();
-  }
-  server.close(() => {
-    console.log('Server closed');
-    process.exit(0);
-  });
-});
+// Graceful shutdown - prevent multiple calls
+let isShuttingDown = false;
 
-process.on('SIGTERM', () => {
-  console.log('Shutting down server...');
-  if (sttGraph) {
-    sttGraph.destroy();
+async function gracefulShutdown() {
+  if (isShuttingDown) {
+    return;
   }
-  server.close(() => {
-    console.log('Server closed');
-    process.exit(0);
-  });
-});
+  isShuttingDown = true;
+
+  console.log('Shutting down gracefully...');
+
+  try {
+    // Close all WebSocket connections immediately
+    console.log(`Closing ${webSocket.clients.size} WebSocket connections...`);
+    webSocket.clients.forEach((ws) => {
+      if (ws.readyState === ws.OPEN || ws.readyState === ws.CONNECTING) {
+        ws.close();
+      }
+    });
+
+    // Close WebSocket server (non-blocking)
+    webSocket.close();
+
+    // Stop VAD client if it has a destroy method (fire and forget)
+    if (
+      vadClient &&
+      typeof (vadClient as { destroy?: () => void }).destroy === 'function'
+    ) {
+      try {
+        (vadClient as { destroy: () => void }).destroy();
+        console.log('VAD client stopped');
+      } catch {
+        // Ignore errors during shutdown
+      }
+    }
+
+    // Close HTTP server (non-blocking)
+    server.close(() => {
+      console.log('HTTP server closed');
+    });
+
+    // Stop Inworld Runtime (fire and forget - don't wait)
+    stopInworldRuntime()
+      .then(() => console.log('Inworld Runtime stopped'))
+      .catch(() => {
+        // Ignore errors during shutdown
+      });
+
+    console.log('Shutdown complete');
+  } catch {
+    // Ignore errors during shutdown
+  }
+
+  // Exit immediately - don't wait for anything
+  process.exitCode = 0;
+  process.exit(0);
+}
+
+process.on('SIGTERM', gracefulShutdown);
+process.on('SIGINT', gracefulShutdown);
