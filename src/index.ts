@@ -356,7 +356,7 @@ async function gracefulShutdown() {
   console.log('Shutting down gracefully...');
 
   try {
-    // First, close all individual WebSocket connections
+    // Close all WebSocket connections immediately
     console.log(`Closing ${webSocket.clients.size} WebSocket connections...`);
     webSocket.clients.forEach((ws) => {
       if (ws.readyState === ws.OPEN || ws.readyState === ws.CONNECTING) {
@@ -364,20 +364,10 @@ async function gracefulShutdown() {
       }
     });
 
-    // Close WebSocket server to stop accepting new connections
-    await new Promise<void>((resolve) => {
-      webSocket.close(() => {
-        console.log('WebSocket server closed');
-        resolve();
-      });
-      // Timeout after 2 seconds
-      setTimeout(() => {
-        console.log('WebSocket server close timeout');
-        resolve();
-      }, 2000);
-    });
+    // Close WebSocket server (non-blocking)
+    webSocket.close();
 
-    // Stop VAD client if it has a destroy method
+    // Stop VAD client if it has a destroy method (fire and forget)
     if (
       vadClient &&
       typeof (vadClient as { destroy?: () => void }).destroy === 'function'
@@ -385,54 +375,31 @@ async function gracefulShutdown() {
       try {
         (vadClient as { destroy: () => void }).destroy();
         console.log('VAD client stopped');
-      } catch (error) {
-        console.error('Error stopping VAD client (non-fatal):', error);
+      } catch {
+        // Ignore errors during shutdown
       }
     }
 
-    // Give a small delay for any pending operations to complete
-    await new Promise((resolve) => setTimeout(resolve, 100));
+    // Close HTTP server (non-blocking)
+    server.close(() => {
+      console.log('HTTP server closed');
+    });
 
-    // Close the HTTP server with timeout
-    await Promise.race([
-      new Promise<void>((resolve) => {
-        server.close(() => {
-          console.log('HTTP server closed');
-          resolve();
-        });
-      }),
-      new Promise<void>((resolve) => {
-        setTimeout(() => {
-          console.log('HTTP server close timeout');
-          resolve();
-        }, 2000);
-      }),
-    ]);
+    // Stop Inworld Runtime (fire and forget - don't wait)
+    stopInworldRuntime()
+      .then(() => console.log('Inworld Runtime stopped'))
+      .catch(() => {
+        // Ignore errors during shutdown
+      });
 
-    // Stop Inworld Runtime with error handling and timeout
-    try {
-      await Promise.race([
-        stopInworldRuntime(),
-        new Promise((resolve) => {
-          setTimeout(() => {
-            console.log('stopInworldRuntime timeout');
-            resolve(undefined);
-          }, 5000);
-        }),
-      ]);
-      console.log('Inworld Runtime stopped');
-    } catch (error) {
-      console.error('Error stopping Inworld Runtime (non-fatal):', error);
-    }
-
-    // Exit immediately after cleanup
     console.log('Shutdown complete');
-    process.exit(0);
-  } catch (error) {
-    // Final catch-all - log and exit gracefully
-    console.error('Unexpected error during shutdown:', error);
-    process.exit(0);
+  } catch {
+    // Ignore errors during shutdown
   }
+
+  // Exit immediately - don't wait for anything
+  process.exitCode = 0;
+  process.exit(0);
 }
 
 process.on('SIGTERM', gracefulShutdown);
