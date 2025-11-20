@@ -21,7 +21,7 @@
     "template"
   ],
   "dependencies": {
-    "@inworld/runtime": "https://assets.inworld.ai/node-packages/inworld-runtime-0.8.0-rc.15.tgz",
+    "@inworld/runtime": "^0.8.0",
     "@types/dotenv": "^8.2.3",
     "@types/express": "^5.0.3",
     "@types/multer": "^2.0.0",
