@@ -50,8 +50,8 @@ Server output (expected):
 
 - "VAD client initialized"
 - "STT Graph initialized"
-- "Server running on http://localhost:<PORT>"
-- "WebSocket available at ws://localhost:<PORT>/ws?key=<session_key>"
+- `"Server running on http://localhost:<PORT>"`
+- `"WebSocket available at ws://localhost:<PORT>/ws?key=<session_key>"`
 
 ## Repository Layout
 
