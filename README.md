@@ -10,7 +10,7 @@ Unity connects via HTTP to create a session token, then upgrades to WebSocket fo
 
 ## Prerequisites
 
-- Node.js 18+
+- Node.js 20+
 - An Inworld AI account and API key
 
 ## Get Started
