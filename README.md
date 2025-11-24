@@ -1,5 +1,10 @@
 # Multimodal Companion
 
+[![MIT License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+[![Powered by Inworld AI](https://img.shields.io/badge/Powered_by-Inworld_AI-orange)](https://inworld.ai/runtime)
+[![Documentation](https://img.shields.io/badge/Documentation-Read_Docs-blue)](https://docs.inworld.ai/docs/node/overview)
+[![Model Providers](https://img.shields.io/badge/Model_Providers-See_Models-purple)](https://docs.inworld.ai/docs/models#llm)
+
 This service is a Node.js backend built on Inworld Runtime that powers:
 
 - Real‑time Speech‑to‑Text (STT) over WebSocket
@@ -10,7 +15,7 @@ Unity connects via HTTP to create a session token, then upgrades to WebSocket fo
 
 ## Prerequisites
 
-- Node.js 18+
+- Node.js 20+
 - An Inworld AI account and API key
 
 ## Get Started
@@ -45,8 +50,8 @@ Server output (expected):
 
 - "VAD client initialized"
 - "STT Graph initialized"
-- "Server running on http://localhost:<PORT>"
-- "WebSocket available at ws://localhost:<PORT>/ws?key=<session_key>"
+- `"Server running on http://localhost:<PORT>"`
+- `"WebSocket available at ws://localhost:<PORT>/ws?key=<session_key>"`
 
 ## Repository Layout
 
