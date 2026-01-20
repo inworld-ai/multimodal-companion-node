@@ -1,7 +1,7 @@
 export const DEFAULT_VOICE_ID = 'Dennis';
 export const DEFAULT_LLM_MODEL_NAME = 'gpt-4o-mini';
 export const DEFAULT_PROVIDER = 'openai';
-export const DEFAULT_TTS_MODEL_ID = 'inworld-tts-1';
+export const DEFAULT_TTS_MODEL_ID = 'inworld-tts-1.5-max';
 export const DEFAULT_VAD_MODEL_PATH = '../assets/models/silero_vad.onnx';
 export const INPUT_SAMPLE_RATE = 16000;
 export const TTS_SAMPLE_RATE = 24000;
